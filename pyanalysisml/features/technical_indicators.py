@@ -1,5 +1,5 @@
 """
-Technical indicators module for calculating various indicators using pandas-ta.
+Technical indicators module using native pandas and numpy implementations.
 """
 
 import logging
@@ -7,14 +7,13 @@ from typing import List, Optional, Union
 
 import numpy as np
 import pandas as pd
-import pandas_ta as ta
 
 logger = logging.getLogger(__name__)
 
 
 def add_indicators(df: pd.DataFrame, indicators: Optional[List[str]] = None) -> pd.DataFrame:
     """
-    Add technical indicators to the dataframe using pandas-ta.
+    Add technical indicators to the dataframe using native pandas implementations.
 
     Args:
         df: DataFrame with OHLCV data
@@ -49,30 +48,41 @@ def add_indicators(df: pd.DataFrame, indicators: Optional[List[str]] = None) -> 
         if indicator.lower() == "sma":
             # Simple Moving Averages
             for period in [5, 20, 50, 200]:
-                result_df[f"sma_{period}"] = ta.sma(result_df["close"], length=period)
+                result_df[f"sma_{period}"] = result_df["close"].rolling(window=period).mean()
 
         elif indicator.lower() == "ema":
             # Exponential Moving Averages
             for period in [5, 20, 50, 200]:
-                result_df[f"ema_{period}"] = ta.ema(result_df["close"], length=period)
+                result_df[f"ema_{period}"] = (
+                    result_df["close"].ewm(span=period, adjust=False).mean()
+                )
 
         elif indicator.lower() == "rsi":
             # Relative Strength Index
-            result_df["rsi_14"] = ta.rsi(result_df["close"], length=14)
+            delta = result_df["close"].diff()
+            gain = delta.clip(lower=0)
+            loss = -delta.clip(upper=0)
+            avg_gain = gain.rolling(window=14).mean()
+            avg_loss = loss.rolling(window=14).mean()
+
+            # First RSI calculation
+            rs = avg_gain / avg_loss.replace(0, np.finfo(float).eps)
+            result_df["rsi_14"] = 100 - (100 / (1 + rs))
 
         elif indicator.lower() == "macd":
             # Moving Average Convergence Divergence
-            macd = ta.macd(result_df["close"], fast=12, slow=26, signal=9)
-            result_df["macd"] = macd["MACD_12_26_9"]
-            result_df["macd_signal"] = macd["MACDs_12_26_9"]
-            result_df["macd_hist"] = macd["MACDh_12_26_9"]
+            ema_12 = result_df["close"].ewm(span=12, adjust=False).mean()
+            ema_26 = result_df["close"].ewm(span=26, adjust=False).mean()
+            result_df["macd"] = ema_12 - ema_26
+            result_df["macd_signal"] = result_df["macd"].ewm(span=9, adjust=False).mean()
+            result_df["macd_hist"] = result_df["macd"] - result_df["macd_signal"]
 
         elif indicator.lower() == "bbands":
             # Bollinger Bands
-            bbands = ta.bbands(result_df["close"], length=20, std=2)
-            result_df["bbands_upper"] = bbands["BBU_20_2.0"]
-            result_df["bbands_middle"] = bbands["BBM_20_2.0"]
-            result_df["bbands_lower"] = bbands["BBL_20_2.0"]
+            result_df["bbands_middle"] = result_df["close"].rolling(window=20).mean()
+            rolling_std = result_df["close"].rolling(window=20).std()
+            result_df["bbands_upper"] = result_df["bbands_middle"] + (rolling_std * 2)
+            result_df["bbands_lower"] = result_df["bbands_middle"] - (rolling_std * 2)
 
             # Add bandwidth and %B
             result_df["bbands_bandwidth"] = (
@@ -84,40 +94,44 @@ def add_indicators(df: pd.DataFrame, indicators: Optional[List[str]] = None) -> 
 
         elif indicator.lower() == "atr":
             # Average True Range
-            result_df["atr_14"] = ta.atr(
-                result_df["high"], result_df["low"], result_df["close"], length=14
-            )
+            high_low = result_df["high"] - result_df["low"]
+            high_close = (result_df["high"] - result_df["close"].shift()).abs()
+            low_close = (result_df["low"] - result_df["close"].shift()).abs()
+
+            true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+            result_df["atr_14"] = true_range.rolling(window=14).mean()
 
         elif indicator.lower() == "stoch":
             # Stochastic Oscillator
-            stoch = ta.stoch(
-                result_df["high"], result_df["low"], result_df["close"], k=14, d=3, smooth_k=3
-            )
-            result_df["stoch_k"] = stoch["STOCHk_14_3_3"]
-            result_df["stoch_d"] = stoch["STOCHd_14_3_3"]
+            low_min = result_df["low"].rolling(window=14).min()
+            high_max = result_df["high"].rolling(window=14).max()
 
-        elif indicator.lower() == "adx":
-            # Average Directional Index
-            adx = ta.adx(result_df["high"], result_df["low"], result_df["close"], length=14)
-            result_df["adx_14"] = adx["ADX_14"]
-
-        elif indicator.lower() == "cci":
-            # Commodity Channel Index
-            result_df["cci_14"] = ta.cci(
-                result_df["high"], result_df["low"], result_df["close"], length=14
+            # %K calculation
+            result_df["stoch_k"] = 100 * (
+                (result_df["close"] - low_min) / (high_max - low_min + np.finfo(float).eps)
             )
+            # %D calculation (3-period SMA of %K)
+            result_df["stoch_d"] = result_df["stoch_k"].rolling(window=3).mean()
 
         elif indicator.lower() == "obv":
             # On Balance Volume
-            result_df["obv"] = ta.obv(result_df["close"], result_df["volume"])
+            obv = pd.Series(0, index=result_df.index)
+            for i in range(1, len(result_df)):
+                if result_df["close"].iloc[i] > result_df["close"].iloc[i - 1]:
+                    obv.iloc[i] = obv.iloc[i - 1] + result_df["volume"].iloc[i]
+                elif result_df["close"].iloc[i] < result_df["close"].iloc[i - 1]:
+                    obv.iloc[i] = obv.iloc[i - 1] - result_df["volume"].iloc[i]
+                else:
+                    obv.iloc[i] = obv.iloc[i - 1]
+            result_df["obv"] = obv
 
         elif indicator.lower() == "roc":
             # Rate of Change
-            result_df["roc_10"] = ta.roc(result_df["close"], length=10)
+            result_df["roc_10"] = result_df["close"].pct_change(periods=10) * 100
 
     # Calculate price momentum
     for period in [1, 3, 5, 10, 21]:
-        result_df[f"return_{period}d"] = result_df["close"].pct_change(period)
+        result_df[f"return_{period}d"] = result_df["close"].pct_change(period) * 100
 
     logger.info(f"Added {len(result_df.columns) - len(df.columns)} indicator columns")
     return result_df
@@ -138,12 +152,15 @@ def add_custom_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # Calculate volatility
     for period in [5, 10, 21]:
-        result_df[f"volatility_{period}d"] = result_df["close"].pct_change().rolling(period).std()
+        result_df[f"volatility_{period}d"] = (
+            result_df["close"].pct_change().rolling(period).std() * 100
+        )
 
     # Add day of week (for potential seasonality)
     if isinstance(result_df.index, pd.DatetimeIndex):
         result_df["day_of_week"] = result_df.index.dayofweek
-        result_df["hour_of_day"] = result_df.index.hour
+        if hasattr(result_df.index, "hour"):  # Check if timestamp has hour component
+            result_df["hour_of_day"] = result_df.index.hour
 
     # Price distance from moving averages (%)
     if "sma_20" in result_df.columns:
@@ -166,5 +183,11 @@ def add_custom_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # High-Low range relative to price
     result_df["hl_range_pct"] = (result_df["high"] - result_df["low"]) / result_df["close"] * 100
+
+    # Additional feature: Price momentum relative to volatility
+    if "volatility_10d" in result_df.columns and "return_5d" in result_df.columns:
+        # Avoid division by zero
+        safe_volatility = result_df["volatility_10d"].replace(0, np.finfo(float).eps)
+        result_df["momentum_per_volatility"] = result_df["return_5d"] / safe_volatility
 
     return result_df

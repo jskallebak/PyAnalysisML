@@ -1,5 +1,6 @@
 """
 Example script for fetching OHLC data, calculating indicators, and making predictions.
+This version uses the custom indicators implementation to avoid pandas-ta dependency.
 """
 
 import logging
@@ -18,7 +19,10 @@ from sklearn.model_selection import train_test_split
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from pyanalysisml.data.binance_client import BinanceClient
-from pyanalysisml.features.technical_indicators import add_custom_features, add_indicators
+
+# Import our custom technical_indicators module
+# Replace with the new module path when you save it
+from pyanalysisml.features.technical_indicators_custom import add_custom_features, add_indicators
 
 # Setup logging
 logging.basicConfig(
@@ -73,71 +77,78 @@ def prepare_features(df, target_column="close", prediction_horizon=1):
 
 def main():
     """Main function to run the example."""
-    # Initialize Binance client
-    client = BinanceClient()
+    try:
+        # Initialize Binance client
+        client = BinanceClient()
 
-    # Fetch historical data
-    symbol = "BTCUSDT"
-    interval = "1d"
-    start_date = "1 year ago"
+        # Fetch historical data
+        symbol = "BTCUSDT"
+        interval = "1d"
+        start_date = "1 year ago"
 
-    logger.info(f"Fetching {interval} data for {symbol} from {start_date}")
-    df = client.get_historical_klines(symbol, interval, start_date)
+        logger.info(f"Fetching {interval} data for {symbol} from {start_date}")
+        df = client.get_historical_klines(symbol, interval, start_date)
 
-    # Calculate technical indicators
-    df = add_indicators(df)
+        # Calculate technical indicators
+        df = add_indicators(df)
 
-    # Add custom features
-    df = add_custom_features(df)
+        # Add custom features
+        df = add_custom_features(df)
 
-    # Prepare features for machine learning
-    prediction_horizon = 5  # predict 5 days ahead
-    X, y, processed_df, feature_columns = prepare_features(
-        df, target_column="close", prediction_horizon=prediction_horizon
-    )
+        # Prepare features for machine learning
+        prediction_horizon = 5  # predict 5 days ahead
+        X, y, processed_df, feature_columns = prepare_features(
+            df, target_column="close", prediction_horizon=prediction_horizon
+        )
 
-    # Split data into training and testing sets
-    test_size = 30  # Use last 30 days for testing
-    X_train, y_train = X[:-test_size], y[:-test_size]
-    X_test, y_test = X[-test_size:], y[-test_size:]
+        # Split data into training and testing sets
+        test_size = 30  # Use last 30 days for testing
+        X_train, y_train = X[:-test_size], y[:-test_size]
+        X_test, y_test = X[-test_size:], y[-test_size:]
 
-    # Train a Random Forest model
-    logger.info("Training Random Forest model")
-    model = RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42, n_jobs=-1)
-    model.fit(X_train, y_train)
+        # Train a Random Forest model
+        logger.info("Training Random Forest model")
+        model = RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42, n_jobs=-1)
+        model.fit(X_train, y_train)
 
-    # Make predictions
-    y_pred = model.predict(X_test)
+        # Make predictions
+        y_pred = model.predict(X_test)
 
-    # Evaluate the model
-    mae = mean_absolute_error(y_test, y_pred)
-    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-    r2 = r2_score(y_test, y_pred)
+        # Evaluate the model
+        mae = mean_absolute_error(y_test, y_pred)
+        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+        r2 = r2_score(y_test, y_pred)
 
-    logger.info(f"Model Evaluation:")
-    logger.info(f"Mean Absolute Error: {mae:.4f}")
-    logger.info(f"Root Mean Squared Error: {rmse:.4f}")
-    logger.info(f"R^2 Score: {r2:.4f}")
+        logger.info(f"Model Evaluation:")
+        logger.info(f"Mean Absolute Error: {mae:.4f}")
+        logger.info(f"Root Mean Squared Error: {rmse:.4f}")
+        logger.info(f"R^2 Score: {r2:.4f}")
 
-    # Get feature importances
-    feature_importance = pd.DataFrame(
-        {"Feature": feature_columns, "Importance": model.feature_importances_}
-    ).sort_values("Importance", ascending=False)
+        # Get feature importances
+        feature_importance = pd.DataFrame(
+            {"Feature": feature_columns, "Importance": model.feature_importances_}
+        ).sort_values("Importance", ascending=False)
 
-    logger.info("\nTop 10 Important Features:")
-    logger.info(feature_importance.head(10))
+        logger.info("\nTop 10 Important Features:")
+        logger.info(feature_importance.head(10))
 
-    # Visualize actual vs predicted
-    plt.figure(figsize=(12, 6))
-    plt.plot(processed_df.index[-test_size:], y_test, label="Actual")
-    plt.plot(processed_df.index[-test_size:], y_pred, label="Predicted")
-    plt.title(f"{symbol} Price Change Prediction ({prediction_horizon} days ahead)")
-    plt.xlabel("Date")
-    plt.ylabel(f"{prediction_horizon}-day Price Change (%)")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(f"{symbol}_prediction_{prediction_horizon}d.png")
-    logger.info(f"Saved prediction plot to {symbol}_prediction_{prediction_horizon}d.png")
+        # Visualize actual vs predicted
+        plt.figure(figsize=(12, 6))
+        plt.plot(processed_df.index[-test_size:], y_test, label="Actual")
+        plt.plot(processed_df.index[-test_size:], y_pred, label="Predicted")
+        plt.title(f"{symbol} Price Change Prediction ({prediction_horizon} days ahead)")
+        plt.xlabel("Date")
+        plt.ylabel(f"{prediction_horizon}-day Price Change (%)")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(f"{symbol}_prediction_{prediction_horizon}d.png")
+        logger.info(f"Saved prediction plot to {symbol}_prediction_{prediction_horizon}d.png")
+
+    except Exception as e:
+        logger.error(f"Error occurred: {str(e)}")
+        import traceback
+
+        logger.error(traceback.format_exc())
 
 
 if __name__ == "__main__":

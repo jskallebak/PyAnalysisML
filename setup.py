@@ -12,6 +12,9 @@ setup(
         "scikit-learn>=1.0.2",
         "matplotlib>=3.5.0",
         "seaborn>=0.11.2",
+        "xgboost>=1.5.0",
+        "lightgbm>=3.3.0",
+        "jupyter>=1.0.0",
     ],
     extras_require={
         "dev": [
