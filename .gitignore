@@ -35,3 +35,6 @@ htmlcov/
 
 # Local configuration
 .env
+
+# data files
+data/
