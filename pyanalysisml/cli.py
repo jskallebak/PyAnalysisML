@@ -5,7 +5,7 @@ import argparse
 import logging
 import sys
 
-from pyanalysisml.data.binance_client import BinanceClient
+from pyanalysisml.data.data_loader import load_from_binance
 from pyanalysisml.features.technical_indicators import add_indicators, add_custom_features
 
 logging.basicConfig(
@@ -26,7 +26,12 @@ def main():
     fetch_parser.add_argument("symbol", help="Trading pair symbol (e.g., BTCUSDT)")
     fetch_parser.add_argument("--interval", default="1d", help="Kline interval (e.g., 1m, 5m, 1h, 1d)")
     fetch_parser.add_argument("--start", default="1 month ago", help="Start time (e.g., '1 month ago', '2021-01-01')")
+    fetch_parser.add_argument("--end", default=None, help="End time (optional, default is now)")
     fetch_parser.add_argument("--output", default="data.csv", help="Output CSV file")
+    fetch_parser.add_argument("--chunk-size", type=int, default=30, 
+                             help="Number of days per chunk for parallel processing (default: 30)")
+    fetch_parser.add_argument("--max-workers", type=int, default=8,
+                             help="Maximum number of parallel workers (default: 8)")
     
     # Indicators command
     indicators_parser = subparsers.add_parser("indicators", help="Calculate technical indicators")
@@ -44,8 +49,18 @@ def main():
     try:
         if args.command == "fetch":
             logger.info(f"Fetching {args.interval} data for {args.symbol} from {args.start}")
-            client = BinanceClient()
-            df = client.get_historical_klines(args.symbol, args.interval, args.start)
+            
+            # Use the load_from_binance function which supports parallel processing
+            df = load_from_binance(
+                symbol=args.symbol,
+                interval=args.interval,
+                start_str=args.start,
+                end_str=args.end,
+                save_csv=False,
+                chunk_size=args.chunk_size,
+                max_workers=args.max_workers
+            )
+            
             df.to_csv(args.output)
             logger.info(f"Saved {len(df)} rows of data to {args.output}")
             

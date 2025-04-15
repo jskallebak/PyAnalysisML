@@ -10,19 +10,35 @@ from pyanalysisml.models.train import prepare_data, train_model
 from pyanalysisml.models.evaluate import evaluate_regression_model, feature_importance
 from pyanalysisml.utils.visualization import plot_predictions
 from pyanalysisml.utils.logging_utils import setup_logging
+import time
 
 # Set up logging
 setup_logging()
 
 # 1. Load data from Binance
+print("Loading data using parallel processing...")
+start_time = time.time()
 df = load_from_binance(
     symbol="BTCUSDT",
     interval="1d",
-    start_str="1 year ago",  # Use more data to ensure we have enough after dropping NaNs
-    save_csv=True  # Save to CSV for future use
+    start_str="2 years ago",  # Use more data to demonstrate parallel processing
+    save_csv=True,  # Save to CSV for future use
+    chunk_size=30,  # Split into 30-day chunks
+    max_workers=4   # Use 4 workers in parallel
 )
-
 print(f"Loaded data shape: {df.shape}")
+print(f"Parallel loading took {time.time() - start_time:.2f} seconds")
+
+# For comparison, load a smaller amount of data without parallel processing
+print("\nLoading data without parallel processing (for comparison)...")
+start_time = time.time()
+df_small = load_from_binance(
+    symbol="BTCUSDT",
+    interval="1d",
+    start_str="3 months ago",
+    save_csv=False
+)
+print(f"Non-parallel loading took {time.time() - start_time:.2f} seconds")
 
 # 2. Clean and preprocess data
 df = clean_dataframe(df, fill_method='ffill', drop_na=False)  # Don't drop NAs yet

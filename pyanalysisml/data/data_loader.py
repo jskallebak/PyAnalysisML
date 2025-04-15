@@ -134,9 +134,20 @@ def load_from_binance(
     api_secret: Optional[str] = None,
     save_csv: bool = False,
     csv_filename: Optional[str] = None,
+    chunk_size: Optional[int] = 30,
+    max_workers: int = 8
 ) -> pd.DataFrame:
     """
     Load data from Binance API.
+    
+    This function fetches historical OHLCV (Open, High, Low, Close, Volume) data 
+    from Binance for cryptocurrency analysis. It supports parallel processing to
+    improve performance when fetching large datasets.
+    
+    The fetching process:
+    1. Initializes a Binance client
+    2. Fetches data (potentially in parallel chunks)
+    3. Optionally saves the result to a CSV file
     
     Args:
         symbol: Trading pair symbol (e.g., 'BTCUSDT')
@@ -147,6 +158,10 @@ def load_from_binance(
         api_secret: Binance API secret (optional, default from config)
         save_csv: Whether to save the data to a CSV file
         csv_filename: Name of the CSV file (optional, default is {symbol}_{interval}.csv)
+        chunk_size: Number of days per chunk for parallel processing (optional)
+                   If provided, the date range will be split into chunks of this size
+                   for parallel fetching. Recommended for large date ranges.
+        max_workers: Maximum number of parallel workers for fetching data chunks
     
     Returns:
         DataFrame with OHLCV data
@@ -156,16 +171,18 @@ def load_from_binance(
     # Initialize Binance client
     client = BinanceClient(api_key=api_key, api_secret=api_secret)
     
-    # Fetch data
+    # Fetch data with support for parallel processing
     df = client.get_historical_klines(
         symbol=symbol,
         interval=interval,
         start_str=start_str,
-        end_str=end_str
+        end_str=end_str,
+        chunk_size=chunk_size,
+        max_workers=max_workers
     )
     
     # Save to CSV if requested
-    if save_csv:
+    if save_csv and not df.empty:
         csv_filename = csv_filename or f"{symbol}_{interval}.csv"
         save_to_csv(df, csv_filename)
     
